@@ -81,15 +81,36 @@ def create_booking():
 
 @app.route('/bookings', methods=['GET'])
 def get_bookings():
+    user_id = request.args.get('user_id')
+    
+    if not user_id or user_id == 'undefined':
+        return jsonify({'error': 'User ID is required'}), 400
+    
+    try:
+        user_id = int(user_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid user ID format'}), 400
+    
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
-    cur.execute("SELECT * FROM bookings ORDER BY start_date")
-    bookings = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    return jsonify(bookings)
+    try:
+        cur.execute("""
+            SELECT b.*, h.name as hotel_name 
+            FROM bookings b 
+            JOIN hotels h ON b.hotel_id = h.id 
+            WHERE b.user_id = %s 
+            ORDER BY b.start_date
+        """, (user_id,))
+        
+        bookings = cur.fetchall()
+        return jsonify(bookings)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
 
 @app.route('/bookings/<int:booking_id>', methods=['DELETE'])
 def delete_booking(booking_id):
@@ -103,6 +124,36 @@ def delete_booking(booking_id):
     
     return jsonify({'status': 'deleted'}), 204
 
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.json
+    username = data['username']
+    password = data['password']
+    
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    # Проверяем, существует ли пользователь
+    cur.execute("SELECT * FROM users WHERE username = %s", (username,))
+    if cur.fetchone():
+        cur.close()
+        conn.close()
+        return jsonify({'status': 'error', 'message': 'Username already exists'}), 409
+    
+    # Создаем нового пользователя
+    cur.execute("""
+        INSERT INTO users (username, password)
+        VALUES (%s, %s)
+        RETURNING id
+    """, (username, password))
+    
+    user_id = cur.fetchone()['id']
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    return jsonify({'status': 'success', 'message': 'Registration successful', 'user_id': user_id}), 201
+
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
@@ -111,24 +162,39 @@ def login():
     
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    
-    cur.execute("SELECT * FROM users WHERE username = %s AND password = %s", 
+    cur.execute("SELECT * FROM users WHERE username = %s AND password = %s",
                 (username, password))
     user = cur.fetchone()
-    
     cur.close()
     conn.close()
     
     if user:
-        return jsonify({'status': 'success', 'message': 'Login successful'}), 200
+        return jsonify({
+            'status': 'success', 
+            'message': 'Login successful',
+            'user_id': user['id']  # Добавляем ID пользователя в ответ
+        }), 200
     else:
-        return jsonify({'status': 'error', 'message': 'Invalid credentials'}), 401
+        return jsonify({
+            'status': 'error', 
+            'message': 'Invalid credentials'
+        }), 401
+
     
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Таблица отелей
+    # Таблица пользователей
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(255) UNIQUE NOT NULL,
+            password VARCHAR(255) NOT NULL
+        )
+    """)
+    
+    # Существующие таблицы...
     cur.execute("""
         CREATE TABLE IF NOT EXISTS hotels (
             id SERIAL PRIMARY KEY,
@@ -137,7 +203,6 @@ def init_db():
         )
     """)
     
-    # Таблица бронирований
     cur.execute("""
         CREATE TABLE IF NOT EXISTS bookings (
             id SERIAL PRIMARY KEY,
@@ -145,10 +210,11 @@ def init_db():
             hotel_id INTEGER NOT NULL,
             start_date DATE NOT NULL,
             end_date DATE NOT NULL,
-            FOREIGN KEY (hotel_id) REFERENCES hotels (id)
+            FOREIGN KEY (hotel_id) REFERENCES hotels (id),
+            FOREIGN KEY (user_id) REFERENCES users (id)
         )
     """)
-
+    
     conn.commit()
     cur.close()
     conn.close()
