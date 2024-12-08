@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tourism Management System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Tourism Management System</h1>
+
+        <div id="loginForm" class="login-form">
+            <h2>Login</h2>
+            <form id="authForm">
+                <input type="text" id="username" placeholder="Username" required>
+                <input type="password" id="password" placeholder="Password" required>
+                <button type="submit">Login</button>
+            </form>
+        </div>
+
+        <div id="mainContent" style="display: none;">
+            <div class="booking-form">
+                <h2>Book a Hotel</h2>
+                <form id="bookingForm">
+                    <select id="hotelSelect" required>
+                        <!-- Hotels will be loaded dynamically -->
+                    </select>
+                    <input type="date" id="startDate" required>
+                    <input type="date" id="endDate" required>
+                    <button type="submit">Book Now</button>
+                </form>
+            </div>
+    
+            <div class="bookings-list">
+                <h2>Your Bookings</h2>
+                <div id="bookingsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="overlay" id="overlay"></div>
+    <div class="confirmation-dialog" id="deleteDialog">
+        <h3>Confirm Deletion</h3>
+        <p>Are you sure you want to delete this booking?</p>
+        <div class="dialog-buttons">
+            <button onclick="cancelDelete()">Cancel</button>
+            <button class="delete-btn" onclick="confirmDelete()">Delete</button>
+        </div>
+    </div>
+
+    <script>
+        let bookingToDelete = null;
+        let currentUser = null;
+
+        // Обработчик формы логина
+        document.getElementById('authForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            const response = await fetch('http://localhost:8000/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ username, password })
+            });
+
+            const result = await response.json();
+            
+            if (response.ok) {
+                currentUser = username;
+                document.getElementById('loginForm').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'block';
+                alert('Login successful!');
+                loadHotels();
+                loadBookings();
+            } else {
+                alert('Invalid credentials!');
+            }
+        });
+
+        // Загрузка списка отелей
+        async function loadHotels() {
+            const response = await fetch('http://localhost:8000/hotels');
+            const hotels = await response.json();
+
+            const hotelSelect = document.getElementById('hotelSelect');
+            hotelSelect.innerHTML = hotels.map(hotel => 
+                `<option value="${hotel.id}">${hotel.name} - Rating: ${hotel.rating}</option>`
+            ).join('');
+        }
+
+        // Обработчик формы бронирования
+        document.getElementById('bookingForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const data = {
+                hotel_id: document.getElementById('hotelSelect').value,
+                start_date: document.getElementById('startDate').value,
+                end_date: document.getElementById('endDate').value,
+                user_id: currentUser // Используем текущего пользователя
+            };
+
+            const response = await fetch('http://localhost:8000/bookings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+
+            if (response.ok) {
+                loadBookings();
+                document.getElementById('bookingForm').reset();
+            }
+        });
+
+        // Загрузка списка бронирований
+        async function loadBookings() {
+            const response = await fetch(`http://localhost:8000/bookings?user=${currentUser}`);
+            const bookings = await response.json();
+            
+            const bookingsList = document.getElementById('bookingsList');
+            bookingsList.innerHTML = bookings.map(booking => `
+                <div class="booking">
+                    <div class="booking-header">
+                        <h3>${booking.hotel_name}</h3>
+                        <span class="date">From: ${booking.start_date} To: ${booking.end_date}</span>
+                        <button class="delete-btn" onclick="showDeleteDialog(${booking.id})">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Подтверждение удаления брони
+        function showDeleteDialog(bookingId) {
+            bookingToDelete = bookingId;
+            document.getElementById('overlay').classList.add('show');
+            document.getElementById('deleteDialog').classList.add('show');
+        }
+
+        function cancelDelete() {
+            bookingToDelete = null;
+            document.getElementById('overlay').classList.remove('show');
+            document.getElementById('deleteDialog').classList.remove('show');
+        }
+
+        async function confirmDelete() {
+            if (bookingToDelete) {
+                const response = await fetch(`http://localhost:8000/booking/${bookingToDelete}`, {
+                    method: 'DELETE',
+                });
+
+                if (response.ok) {
+                    loadBookings();
+                }
+            }
+            cancelDelete();
+        }
+    </script>
+</body>
+</html>
