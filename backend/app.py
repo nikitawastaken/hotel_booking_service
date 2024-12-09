@@ -15,26 +15,6 @@ def get_db_connection():
         password="password"
     )
 
-# --- CRUD для отелей ---
-@app.route('/hotels', methods=['POST'])
-def create_hotel():
-    data = request.json
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    cur.execute("""
-        INSERT INTO hotels (name, rating)
-        VALUES (%s, %s)
-        RETURNING id
-    """, (data['name'], data['rating']))
-    
-    hotel_id = cur.fetchone()[0]
-    conn.commit()
-    cur.close()
-    conn.close()
-    
-    return jsonify({'id': hotel_id}), 201
-
 @app.route('/hotels', methods=['GET'])
 def get_hotels():
     conn = get_db_connection()
@@ -47,19 +27,6 @@ def get_hotels():
     
     return jsonify(hotels)
 
-@app.route('/hotels/<int:hotel_id>', methods=['DELETE'])
-def delete_hotel(hotel_id):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    cur.execute("DELETE FROM hotels WHERE id = %s", (hotel_id,))
-    conn.commit()
-    cur.close()
-    conn.close()
-    
-    return jsonify({'status': 'deleted'}), 204
-
-# --- CRUD для брони ---
 @app.route('/bookings', methods=['POST'])
 def create_booking():
     data = request.json
@@ -133,14 +100,12 @@ def register():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
-    # Проверяем, существует ли пользователь
     cur.execute("SELECT * FROM users WHERE username = %s", (username,))
     if cur.fetchone():
         cur.close()
         conn.close()
         return jsonify({'status': 'error', 'message': 'Username already exists'}), 409
     
-    # Создаем нового пользователя
     cur.execute("""
         INSERT INTO users (username, password)
         VALUES (%s, %s)
@@ -172,20 +137,130 @@ def login():
         return jsonify({
             'status': 'success', 
             'message': 'Login successful',
-            'user_id': user['id']  # Добавляем ID пользователя в ответ
+            'user_id': user['id']
         }), 200
     else:
         return jsonify({
             'status': 'error', 
             'message': 'Invalid credentials'
         }), 401
-
     
+
+# --- Admin Stuff ---
+@app.route('/admin/login', methods=['POST'])
+def admin_login():
+    data = request.json
+    username = data['username']
+    password = data['password']
+    
+    if username == "admin" and password == "admin123":
+        return jsonify({
+            'status': 'success',
+            'message': 'Admin login successful'
+        }), 200
+    return jsonify({
+        'status': 'error',
+        'message': 'Invalid admin credentials'
+    }), 401
+
+@app.route('/admin/users', methods=['GET'])
+def get_users():
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cur.execute("""
+        SELECT users.*, COUNT(bookings.id) as booking_count 
+        FROM users 
+        LEFT JOIN bookings ON users.id = bookings.user_id 
+        GROUP BY users.id
+        ORDER BY users.id
+    """)
+    users = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    return jsonify(users)
+
+@app.route('/admin/users/<int:user_id>/bookings', methods=['GET'])
+def get_user_bookings(user_id):
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cur.execute("""
+        SELECT b.*, h.name as hotel_name 
+        FROM bookings b 
+        JOIN hotels h ON b.hotel_id = h.id 
+        WHERE b.user_id = %s
+        ORDER BY b.start_date
+    """, (user_id,))
+    bookings = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    return jsonify(bookings)
+
+@app.route('/admin/users/<int:user_id>', methods=['DELETE'])
+def delete_user(user_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    cur.execute("DELETE FROM bookings WHERE user_id = %s", (user_id,))
+    cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    return jsonify({'status': 'deleted'}), 204
+
+@app.route('/admin/hotels', methods=['POST'])
+def admin_create_hotel():
+    data = request.json
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    cur.execute("""
+        INSERT INTO hotels (name, rating)
+        VALUES (%s, %s)
+        RETURNING id
+    """, (data['name'], data['rating']))
+    
+    hotel_id = cur.fetchone()[0]
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    return jsonify({'id': hotel_id, 'status': 'created'}), 201
+
+@app.route('/admin/hotels/<int:hotel_id>', methods=['DELETE'])
+def admin_delete_hotel(hotel_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        cur.execute("SELECT id FROM hotels WHERE id = %s", (hotel_id,))
+        if not cur.fetchone():
+            return jsonify({'status': 'error', 'message': 'Hotel not found'}), 404
+            
+        cur.execute("DELETE FROM bookings WHERE hotel_id = %s", (hotel_id,))
+        
+        cur.execute("DELETE FROM hotels WHERE id = %s", (hotel_id,))
+        
+        conn.commit()
+        return jsonify({'status': 'deleted'}), 204
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+        
+    finally:
+        cur.close()
+        conn.close()
+
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Таблица пользователей
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
@@ -194,7 +269,6 @@ def init_db():
         )
     """)
     
-    # Существующие таблицы...
     cur.execute("""
         CREATE TABLE IF NOT EXISTS hotels (
             id SERIAL PRIMARY KEY,

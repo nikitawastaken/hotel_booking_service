@@ -1,10 +1,20 @@
 services:
+  admin:
+    build: ./admin-frontend
+    expose:
+      - "80"
+    volumes:
+      - ./admin-frontend:/app
+    depends_on:
+      - backend
+
   nginx:
     build: ./nginx
     ports:
       - "80:80"
     depends_on:
       - frontend
+      - admin
       - backend
 
   frontend:
