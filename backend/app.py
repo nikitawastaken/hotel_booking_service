@@ -15,6 +15,7 @@ def get_db_connection():
         password="password"
     )
 
+# --- User CRUDs ---
 @app.route('/hotels', methods=['GET'])
 def get_hotels():
     conn = get_db_connection()
@@ -146,7 +147,7 @@ def login():
         }), 401
     
 
-# --- Admin Stuff ---
+# --- Admin CRUDs ---
 @app.route('/admin/login', methods=['POST'])
 def admin_login():
     data = request.json
