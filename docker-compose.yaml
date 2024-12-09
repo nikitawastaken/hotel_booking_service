@@ -1,15 +1,25 @@
 services:
-  frontend:
-    build: ./frontend
+  nginx:
+    build: ./nginx
     ports:
       - "80:80"
+    depends_on:
+      - frontend
+      - backend
+
+  frontend:
+    build: ./frontend
+    expose:
+      - "80"
+    volumes:
+      - ./frontend:/app
     depends_on:
       - backend
 
   backend:
     build: ./backend
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     depends_on:
       - db
     environment:

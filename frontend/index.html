@@ -1,232 +1,58 @@
+<!-- index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tourism Management System</title>
+    <title>Tourism Management System - Dashboard</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <h1>Tourism Management System</h1>
-
-        <div id="loginForm" class="login-form">
-            <h2>Login</h2>
-            <form id="authForm">
-                <input type="text" id="username" placeholder="Username" required>
-                <input type="password" id="password" placeholder="Password" required>
-                <button type="submit">Login</button>
-            </form>
-        </div>
-
-        <div class="auth-toggle">
-            <button onclick="toggleAuth('login')">Login</button>
-            <button onclick="toggleAuth('register')">Register</button>
-        </div>
-
-        <div id="registerForm" class="auth-form" style="display: none;">
-            <h2>Register</h2>
-            <form id="registrationForm">
-                <input type="text" id="regUsername" placeholder="Username" required>
-                <input type="password" id="regPassword" placeholder="Password" required>
-                <button type="submit">Register</button>
-            </form>
-        </div>
-
-        <div id="mainContent" style="display: none;">
-            <div class="booking-form">
+        <nav class="navbar">
+            <h1>Tourism Management System</h1>
+            <div class="user-controls">
+                <span id="userGreeting"></span>
+                <button id="logoutBtn" class="btn-secondary">Logout</button>
+            </div>
+        </nav>
+        
+        <div class="main-content">
+            <section class="booking-form">
                 <h2>Book a Hotel</h2>
                 <form id="bookingForm">
-                    <select id="hotelSelect" required>
-                        <!-- Hotels will be loaded dynamically -->
-                    </select>
-                    <input type="date" id="startDate" required>
-                    <input type="date" id="endDate" required>
-                    <button type="submit">Book Now</button>
+                    <div class="form-group">
+                        <select id="hotelSelect" required>
+                            <option value="">Select a hotel</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <input type="date" id="startDate" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="date" id="endDate" required>
+                    </div>
+                    <button type="submit" class="btn-primary">Book Now</button>
                 </form>
-            </div>
-    
-            <div class="bookings-list">
+            </section>
+
+            <section class="bookings-list">
                 <h2>Your Bookings</h2>
                 <div id="bookingsList"></div>
-            </div>
+            </section>
         </div>
     </div>
 
-    <div class="overlay" id="overlay"></div>
-    <div class="confirmation-dialog" id="deleteDialog">
+    <div id="overlay" class="overlay" style="display: none;"></div>
+    <div id="deleteDialog" class="confirmation-dialog" style="display: none;">
         <h3>Confirm Deletion</h3>
         <p>Are you sure you want to delete this booking?</p>
         <div class="dialog-buttons">
-            <button onclick="cancelDelete()">Cancel</button>
-            <button class="delete-btn" onclick="confirmDelete()">Delete</button>
+            <button id="cancelDelete" class="btn-secondary">Cancel</button>
+            <button id="confirmDelete" class="btn-danger">Delete</button>
         </div>
     </div>
 
-    <script>
-        let bookingToDelete = null;
-        let currentUser = null;
-        let currentUserId = null;
-
-        function toggleAuth(form) {
-            if (form === 'login') {
-                document.getElementById('loginForm').style.display = 'block';
-                document.getElementById('registerForm').style.display = 'none';
-            } else {
-                document.getElementById('loginForm').style.display = 'none';
-                document.getElementById('registerForm').style.display = 'block';
-            }
-        }
-
-        // Обработчик формы регистрации
-        document.getElementById('registrationForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('regUsername').value;
-            const password = document.getElementById('regPassword').value;
-
-            const response = await fetch('http://localhost:8000/register', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ username, password })
-            });
-
-            const result = await response.json();
-            if (response.ok) {
-                alert('Registration successful! Please login.');
-                toggleAuth('login');
-            } else {
-                alert(result.message);
-            }
-        });
-
-        // Обработчик формы логина
-        document.getElementById('authForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            
-            try {
-                const response = await fetch('http://localhost:8000/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ username, password })
-                });
-
-                const result = await response.json();
-                if (response.ok) {
-                    currentUser = username;
-                    currentUserId = result.user_id; // Сохраняем ID пользователя
-                    console.log('Logged in with user ID:', currentUserId); // Для отладки
-                    
-                    document.getElementById('loginForm').style.display = 'none';
-                    document.getElementById('registerForm').style.display = 'none';
-                    document.getElementById('mainContent').style.display = 'block';
-                    
-                    await loadHotels();
-                    await loadBookings();
-                } else {
-                    alert(result.message || 'Invalid credentials!');
-                }
-            } catch (error) {
-                console.error('Login error:', error);
-                alert('An error occurred during login');
-            }
-        });
-
-        // Загрузка списка отелей
-        async function loadHotels() {
-            const response = await fetch('http://localhost:8000/hotels');
-            const hotels = await response.json();
-
-            const hotelSelect = document.getElementById('hotelSelect');
-            hotelSelect.innerHTML = hotels.map(hotel => 
-                `<option value="${hotel.id}">${hotel.name} - Rating: ${hotel.rating}</option>`
-            ).join('');
-        }
-
-        // Обработчик формы бронирования
-        document.getElementById('bookingForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const data = {
-                hotel_id: parseInt(document.getElementById('hotelSelect').value),
-                start_date: document.getElementById('startDate').value,
-                end_date: document.getElementById('endDate').value,
-                user_id: currentUserId
-            };
-
-            const response = await fetch('http://localhost:8000/bookings', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(data)
-            });
-
-            if (response.ok) {
-                loadBookings();
-                document.getElementById('bookingForm').reset();
-            }
-        });
-
-        // Загрузка списка бронирований
-        async function loadBookings() {
-            if (!currentUserId) {
-                console.error('No user ID available');
-                return;
-            }
-            
-            try {
-                const response = await fetch(`http://localhost:8000/bookings?user_id=${currentUserId}`);
-                if (!response.ok) {
-                    throw new Error('Failed to fetch bookings');
-                }
-                const bookings = await response.json();
-                const bookingsList = document.getElementById('bookingsList');
-                
-                bookingsList.innerHTML = bookings.map(booking => `
-                    <div class="booking">
-                        <div class="booking-header">
-                            <h3>${booking.hotel_name}</h3>
-                            <span class="date">From: ${booking.start_date} To: ${booking.end_date}</span>
-                            <button class="delete-btn" onclick="showDeleteDialog(${booking.id})">Delete</button>
-                        </div>
-                    </div>
-                `).join('');
-            } catch (error) {
-                console.error('Error loading bookings:', error);
-            }
-        }
-
-        // Подтверждение удаления брони
-        function showDeleteDialog(bookingId) {
-            bookingToDelete = bookingId;
-            document.getElementById('overlay').classList.add('show');
-            document.getElementById('deleteDialog').classList.add('show');
-        }
-
-        function cancelDelete() {
-            bookingToDelete = null;
-            document.getElementById('overlay').classList.remove('show');
-            document.getElementById('deleteDialog').classList.remove('show');
-        }
-
-        async function confirmDelete() {
-            if (bookingToDelete) {
-                const response = await fetch(`http://localhost:8000/booking/${bookingToDelete}`, {
-                    method: 'DELETE',
-                });
-
-                if (response.ok) {
-                    loadBookings();
-                }
-            }
-            cancelDelete();
-        }
-    </script>
+    <script src="js/main.js"></script>
 </body>
 </html>
