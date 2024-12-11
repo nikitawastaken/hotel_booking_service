@@ -3,13 +3,15 @@ from flask_cors import CORS
 from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import os
 
 app = Flask(__name__)
 CORS(app)
 
 def get_db_connection():
+    hostdb = os.getenv("DB_HOST", "postgres")
     return psycopg2.connect(
-        host="db",
+        host=hostdb,
         database="tourismdb",
         user="postgres",
         password="password"
